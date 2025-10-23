@@ -7,6 +7,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy.sql import func
 from datetime import datetime
 from dotenv import load_dotenv
+from datetime import timedelta
 
 # --- 1. CONFIGURAZIONE INIZIALE ---
 
@@ -18,6 +19,10 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# === AGGIUNGI QUESTA RIGA ===
+# Imposta la scadenza automatica della sessione (es. 8 ore)
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
 
 # Inizializza estensioni
 db = SQLAlchemy(app)
@@ -418,25 +423,41 @@ def get_statistiche_nil():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
 # --- 6. COMANDO PER INIZIALIZZARE IL DB ---
-# Questo comando va lanciato dal terminale una sola volta
+# Assicurati di avere 'from datetime import datetime' all'inizio del file app.py
+
 @app.cli.command("init-db")
 def init_db_command():
-    """Crea le tabelle del database definite nei modelli."""
+    """Pulisce il DB, crea le tabelle e inserisce tutti i dati di test."""
     with app.app_context():
-        # Crea tutte le tabelle
-        db.create_all()
         
-        # Aggiungiamo un admin di default per il primo accesso
-        if not ACCOUNT.query.filter_by(Email='admin@comune.milano.it').first():
+        print("Inizio inizializzazione... Disabilito i controlli FK.")
+        # === AGGIUNGI QUESTA RIGA ===
+        db.session.execute(db.text('SET FOREIGN_KEY_CHECKS=0;'))
+        # ============================
+
+        # 1. Pulisce tutto (elimina le tabelle vecchie)
+        db.drop_all()
+        print("Database pulito.")
+        
+        # 2. Crea le tabelle nuove
+        db.create_all()
+        print("Tabelle create.")
+
+        # === AGGIUNGI QUESTA RIGA ===
+        db.session.execute(db.text('SET FOREIGN_KEY_CHECKS=1;'))
+        # ============================
+        print("Controlli FK riabilitati.")
+
+        # --- 3. CREA ADMIN ---
+        try:
             admin_account = ACCOUNT(
                 Email='admin@comune.milano.it',
                 Tipo_Account='admin'
             )
-            admin_account.set_password('admin123') # Cambia questa password!
+            admin_account.set_password('admin123')
             db.session.add(admin_account)
-            db.session.flush() # Per ottenere l'ID
+            db.session.flush() 
             
             admin_profile = AMMINISTRATORE(
                 ID_Amministratore=admin_account.ID_Account,
@@ -445,11 +466,105 @@ def init_db_command():
                 Ruolo='Super Admin'
             )
             db.session.add(admin_profile)
-            db.session.commit()
             print("Admin di default (admin@comune.milano.it / admin123) creato.")
-            
-    print("Database inizializzato e tabelle create.")
 
+            # --- 4. CREA UTENTI DI ESEMPIO (Mario, Giulia, Luca) ---
+            
+            # MARIO ROSSI (password: utente123)
+            user1_acc = ACCOUNT(Email='mario.rossi@email.it', Tipo_Account='utente')
+            user1_acc.set_password('utente123') # Password
+            db.session.add(user1_acc)
+            db.session.flush()
+            
+            user1_profile = UTENTE(ID_Utente=user1_acc.ID_Account, Nome='Mario', Cognome='Rossi', Codice_Fiscale='RSSMRA80A01H501A', Telefono='3331234567')
+            db.session.add(user1_profile)
+            
+            auto1_1 = AUTO(Targa='GA123ZZ', Marca='Tesla', Modello='Model 3', ID_Utente=user1_acc.ID_Account)
+            auto1_2 = AUTO(Targa='GA456AA', Marca='Volkswagen', Modello='ID.3', ID_Utente=user1_acc.ID_Account)
+            db.session.add_all([auto1_1, auto1_2])
+            print("Utente 'mario.rossi' (pass: utente123) creato.")
+
+            # GIULIA BIANCHI (password: utente123)
+            user2_acc = ACCOUNT(Email='giulia.bianchi@email.it', Tipo_Account='utente')
+            user2_acc.set_password('utente123')
+            db.session.add(user2_acc)
+            db.session.flush()
+            
+            user2_profile = UTENTE(ID_Utente=user2_acc.ID_Account, Nome='Giulia', Cognome='Bianchi', Codice_Fiscale='BNCGLI85A41H501B', Telefono='3387654321')
+            db.session.add(user2_profile)
+            
+            auto2_1 = AUTO(Targa='FY987WX', Marca='Fiat', Modello='500e', ID_Utente=user2_acc.ID_Account)
+            db.session.add(auto2_1)
+            print("Utente 'giulia.bianchi' (pass: utente123) creato.")
+            
+            # LUCA VERDI (password: utente123)
+            user3_acc = ACCOUNT(Email='luca.verdi@email.it', Tipo_Account='utente')
+            user3_acc.set_password('utente123')
+            db.session.add(user3_acc)
+            db.session.flush()
+            
+            user3_profile = UTENTE(ID_Utente=user3_acc.ID_Account, Nome='Luca', Cognome='Verdi', Codice_Fiscale='VRDLRU90A01H501C', Telefono='3471122334')
+            db.session.add(user3_profile)
+            
+            auto3_1 = AUTO(Targa='EX456VB', Marca='Renault', Modello='Zoe', ID_Utente=user3_acc.ID_Account)
+            db.session.add(auto3_1)
+            print("Utente 'luca.verdi' (pass: utente123) creato.")
+
+            # --- 5. CREA COLONNINE DI ESEMPIO ---
+            c1 = COLONNINA(Indirizzo='Piazza del Duomo, 20121 Milano MI', Latitudine=45.4642, Longitudine=9.1900, Potenza_kW=50.0, NIL='Duomo')
+            c2 = COLONNINA(Indirizzo='Via Montenapoleone, 20121 Milano MI', Latitudine=45.4687, Longitudine=9.1950, Potenza_kW=22.0, NIL='Duomo')
+            c3 = COLONNINA(Indirizzo='Corso Buenos Aires, 42, 20124 Milano MI', Latitudine=45.4777, Longitudine=9.2132, Potenza_kW=50.0, NIL='Buenos Aires - Venezia')
+            c4 = COLONNINA(Indirizzo='Piazzale Loreto, 20127 Milano MI', Latitudine=45.4855, Longitudine=9.2185, Potenza_kW=22.0, NIL='Loreto')
+            c5 = COLONNINA(Indirizzo='Viale Papiniano, 59, 20123 Milano MI', Latitudine=45.4590, Longitudine=9.1685, Potenza_kW=50.0, NIL='Porta Genova')
+            c6 = COLONNINA(Indirizzo='Via Alserio, 20159 Milano MI', Latitudine=45.4883, Longitudine=9.1771, Potenza_kW=22.0, NIL='Isola')
+            c7 = COLONNINA(Indirizzo='Piazza Gae Aulenti, 20124 Milano MI', Latitudine=45.4837, Longitudine=9.1904, Potenza_kW=75.0, NIL='Porta Garibaldi')
+            db.session.add_all([c1, c2, c3, c4, c5, c6, c7])
+            print("Colonnine di esempio create.")
+            
+            # Commit per salvare utenti e colonnine e ottenere i loro ID
+            db.session.commit()
+            
+            # --- 6. CREA RICARICHE E PRENOTAZIONI DI ESEMPIO ---
+            r1 = RICARICA(Data_Ora_Inizio=datetime(2025, 10, 20, 8, 30, 0), Data_Ora_Fine=datetime(2025, 10, 20, 9, 15, 0), Energia_Erogata_kWh=35.500, ID_Utente=2, ID_Colonnina=1, Targa_Auto='GA123ZZ')
+            r2 = RICARICA(Data_Ora_Inizio=datetime(2025, 10, 21, 14, 0, 0), Data_Ora_Fine=datetime(2025, 10, 21, 15, 30, 0), Energia_Erogata_kWh=48.200, ID_Utente=3, ID_Colonnina=5, Targa_Auto='FY987WX')
+            r3 = RICARICA(Data_Ora_Inizio=datetime(2025, 10, 23, 9, 0, 0), ID_Utente=4, ID_Colonnina=3, Targa_Auto='EX456VB') # In corso
+            r4 = RICARICA(Data_Ora_Inizio=datetime(2025, 10, 22, 18, 0, 0), Data_Ora_Fine=datetime(2025, 10, 22, 18, 45, 0), Energia_Erogata_kWh=20.000, ID_Utente=2, ID_Colonnina=2, Targa_Auto='GA456AA')
+            r5 = RICARICA(Data_Ora_Inizio=datetime(2025, 10, 23, 8, 45, 0), ID_Utente=2, ID_Colonnina=7, Targa_Auto='GA123ZZ') # In corso
+            p1 = PRENOTAZIONE(Data_Ora_Inizio_Prenotazione=datetime(2025, 10, 23, 10, 0, 0), Data_Ora_Fine_Prenotazione=datetime(2025, 10, 23, 11, 0, 0), Stato='attiva', ID_Utente=3, ID_Colonnina=6, Targa_Auto='FY987WX')
+            db.session.add_all([r1, r2, r3, r4, r5, p1])
+
+            # --- 7. AGGIORNA STATO COLONNINE ---
+            col_occ_1 = COLONNINA.query.get(3)
+            col_occ_2 = COLONNINA.query.get(7)
+            col_man = COLONNINA.query.get(4)
+            col_pren = COLONNINA.query.get(6)
+            
+            if col_occ_1: col_occ_1.Stato = 'occupata'
+            if col_occ_2: col_occ_2.Stato = 'occupata'
+            if col_man: col_man.Stato = 'manutenzione'
+            if col_pren: col_pren.Stato = 'prenotata'
+            
+            # Commit finale
+            db.session.commit()
+            print("Database inizializzato e popolato con dati di test.")
+            
+        except Exception as e:
+            db.session.rollback()
+            print(f"Errore durante l'inizializzazione del DB: {e}")
+
+# === NUOVO COMANDO PER RESETTARE LA PASSWORD DI LUCA ===
+@app.cli.command("reset-luca-password")
+def reset_luca_password_command():
+    """Trova l'utente luca.verdi@email.it e reimposta la sua password a 'utente123'."""
+    with app.app_context():
+        user_account = ACCOUNT.query.filter_by(Email='luca.verdi@email.it').first()
+        if user_account:
+            user_account.set_password('utente123')
+            db.session.commit()
+            print("Password per 'luca.verdi@email.it' reimpostata a 'utente123'.")
+        else:
+            print("ERRORE: Utente 'luca.verdi@email.it' non trovato nel database.")
+# =======================================================
 
 # --- 7. AVVIO APPLICAZIONE ---
 if __name__ == '__main__':
