@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Predizione Utilizzo Colonnina</title>
+    <style>
+        /* Stili CSS per rendere la pagina gradevole e responsive */
+        body {
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 90vh;
+            background-color: #f4f7f6;
+            padding: 20px;
+        }
+        .container {
+            background: #fff;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 100%;
+        }
+        h2 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 25px;
+        }
+        .form-group { margin-bottom: 20px; }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 1rem;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: background-color 0.2s;
+        }
+        button:hover { background-color: #0056b3; }
+        #result {
+            margin-top: 25px;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 1.2rem;
+        }
+        .result-success { background-color: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .result-error { background-color: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+
+        @media (max-width: 600px) {
+            .container { padding: 20px; }
+            h2 { font-size: 1.5rem; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Predici Livello Utilizzo Colonnina ⚡</h2>
+        <form id="prediction-form">
+            <div class="form-group">
+                <label for="potenza">Potenza (kW):</label>
+                <input type="number" step="0.1" id="potenza" name="Potenza_kW" required value="22.0">
+            </div>
+            <div class="form-group">
+                <label for="nil">Quartiere (NIL):</label>
+                <input type="text" id="nil" name="NIL" required value="Isola">
+            </div>
+            <div class="form-group">
+                <label for="ricariche-medie">Ricariche Medie Giornaliere (ultimi 90gg):</label>
+                <input type="number" step="0.01" id="ricariche-medie" name="RicaricheMedieGiornaliere" required value="0.05">
+            </div>
+            <div class="form-group">
+                <label for="durata-media">Durata Media Ricarica (minuti):</label>
+                <input type="number" step="1" id="durata-media" name="DurataMediaMinuti" required value="45">
+            </div>
+            <div class="form-group">
+                <label for="energia-media">Energia Media Erogata (kWh):</label>
+                <input type="number" step="0.1" id="energia-media" name="EnergiaMediaKWh" required value="15.5">
+            </div>
+
+            <button type="submit">Predici Utilizzo</button>
+        </form>
+
+        <div id="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        // Intercetta l'invio del form
+        document.getElementById('prediction-form').addEventListener('submit', async function(event) {
+            event.preventDefault(); // Impedisce l'invio standard
+
+            const resultDiv = document.getElementById('result');
+            resultDiv.style.display = 'none'; // Nasconde risultato precedente
+            resultDiv.className = ''; // Resetta stile risultato
+
+            // 1. Raccogli i dati dal form
+            const formData = new FormData(event.target);
+            const dataToSend = {};
+            formData.forEach((value, key) => {
+                // Converte i campi numerici da stringa a numero
+                if (key === 'Potenza_kW' || key === 'RicaricheMedieGiornaliere' || key === 'DurataMediaMinuti' || key === 'EnergiaMediaKWh') {
+                    dataToSend[key] = parseFloat(value);
+                } else {
+                    dataToSend[key] = value;
+                }
+            });
+
+            // 2. Definisci l'URL dell'API
+            // Poiché l'API e la pagina sono sullo stesso server, usiamo un percorso relativo
+            const apiUrl = '/predict'; 
+
+            try {
+                // 3. Chiama l'API di predizione
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(dataToSend), // Invia i dati come JSON
+                });
+
+                const result = await response.json(); // Legge la risposta JSON
+
+                // 4. Mostra il risultato all'utente
+                if (response.ok) {
+                    // Predizione riuscita
+                    resultDiv.textContent = `Livello di Utilizzo Predetto: ${result.predicted_usage_level.toUpperCase()}`;
+                    resultDiv.classList.add('result-success'); // Stile verde
+                } else {
+                    // Errore dall'API (es. dati mancanti)
+                    resultDiv.textContent = `Errore: ${result.error || 'Errore sconosciuto dall\'API'}`;
+                    resultDiv.classList.add('result-error'); // Stile rosso
+                }
+                resultDiv.style.display = 'block'; // Rendi visibile il div del risultato
+
+            } catch (error) {
+                // Gestisce errori di rete (es. server non raggiungibile)
+                console.error("Errore durante la chiamata API:", error);
+                resultDiv.textContent = 'Errore di connessione con il server di predizione.';
+                resultDiv.classList.add('result-error'); // Stile rosso
+                resultDiv.style.display = 'block'; // Rendi visibile il div
+            }
+        });
+    </script>
+</body>
+</html>
