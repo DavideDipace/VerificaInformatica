@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pannello Admin</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; background: #f9f9f9; margin: 0; padding: 20px; }
+        header { display: flex; justify-content: space-between; align-items: center; background: #333; color: white; padding: 10px 20px; }
+        nav { margin: 20px 0; }
+        nav button { background: #007bff; color: white; border: none; padding: 10px 15px; cursor: pointer; margin-right: 5px; }
+        nav button:hover { background: #0056b3; }
+        .content-section { display: none; background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .content-section.active { display: block; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        form div { display: flex; flex-direction: column; }
+        form button { grid-column: span 2; background: #28a745; color: white; padding: 10px; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    
+    <header>
+        <h1>Pannello Amministrazione</h1>
+        <div>
+            {{ user_email }} | <a href="/logout" style="color:white;">Logout</a>
+        </div>
+    </header>
+
+    <nav>
+        <button onclick="showSection('colonnine')">Gestione Colonnine</button>
+        <button onclick="showSection('utenti')">Gestione Utenti</button>
+        <button onclick="showSection('ricariche')">Elenco Ricariche</button>
+        <button onclick="showSection('statistiche')">Statistiche Quartieri</button>
+    </nav>
+
+    <section id="colonnine" class="content-section">
+        <h2>Gestione Colonnine</h2>
+        <h3>Aggiungi/Modifica Colonnina</h3>
+        <form id="form-colonnina">
+            <input type="hidden" id="colonnina-id">
+            <div>
+                <label>Indirizzo:</label>
+                <input type="text" id="colonnina-indirizzo" required>
+            </div>
+            <div>
+                <label>Latitudine:</label>
+                <input type="text" id="colonnina-lat" required>
+            </div>
+            <div>
+                <label>Longitudine:</label>
+                <input type="text" id="colonnina-lng" required>
+            </div>
+            <div>
+                <label>Potenza (kW):</label>
+                <input type="number" step="0.1" id="colonnina-potenza" required>
+            </div>
+            <div>
+                <label>NIL (Quartiere):</label>
+                <input type="text" id="colonnina-nil">
+            </div>
+            <div>
+                <label>Stato:</label>
+                <select id="colonnina-stato">
+                    <option value="disponibile">Disponibile</option>
+                    <option value="occupata">Occupata</option>
+                    <option value="manutenzione">Manutenzione</option>
+                    <option value="prenotata">Prenotata</option>
+                </select>
+            </div>
+            <button type="submit">Salva Colonnina</button>
+        </form>
+        <h3>Elenco Colonnine</h3>
+        <table id="table-colonnine">
+            <thead><tr><th>ID</th><th>Indirizzo</th><th>NIL</th><th>Potenza</th><th>Stato</th><th>Azioni</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <section id="utenti" class="content-section">
+        <h2>Gestione Utenti</h2>
+        <h3>Nuovo Utente</h3>
+        <form id="form-utente">
+             <div><label>Nome:</label><input type="text" id="utente-nome" required></div>
+             <div><label>Cognome:</label><input type="text" id="utente-cognome" required></div>
+             <div><label>Codice Fiscale:</label><input type="text" id="utente-cf" required></div>
+             <div><label>Email:</label><input type="email" id="utente-email" required></div>
+             <div><label>Password:</label><input type="password" id="utente-password" required></div>
+             <button type="submit">Crea Utente</button>
+        </form>
+        <h3>Elenco Utenti</h3>
+        <table id="table-utenti">
+            <thead><tr><th>ID</th><th>Nome</th><th>Cognome</th><th>Email</th><th>CF</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <section id="ricariche" class="content-section">
+        <h2>Elenco Ricariche Totali</h2>
+        <table id="table-ricariche">
+            <thead><tr><th>ID</th><th>Inizio</th><th>Fine</th><th>kWh</th><th>Utente</th><th>Colonnina</th></tr></thead>
+            <tbody></tbody>
+        </table>
+    </section>
+
+    <section id="statistiche" class="content-section">
+        <h2>Statistiche Ricariche per Quartiere (NIL)</h2>
+        <div>
+            <label>Inserisci NIL:</label>
+            <input type="text" id="stats-nil-input" placeholder="Es. Loreto">
+            <button onclick="loadStatistiche()">Carica Grafico</button>
+        </div>
+        <h3 id="stats-title"></h3>
+        <canvas id="stats-chart" width="400" height="200"></canvas>
+    </section>
+
+    <script>
+        let statsChart = null; // Variabile globale per il grafico
+
+        // --- Navigazione Sezioni ---
+        function showSection(sectionId) {
+            document.querySelectorAll('.content-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            document.getElementById(sectionId).classList.add('active');
+            
+            // Carica i dati quando la sezione diventa visibile
+            if(sectionId === 'colonnine') loadColonnine();
+            if(sectionId === 'utenti') loadUtenti();
+            if(sectionId === 'ricariche') loadRicariche();
+        }
+        
+        // --- REQ 3: Colonnine ---
+        async function loadColonnine() {
+            const response = await fetch('/api/colonnine');
+            const colonnine = await response.json();
+            const tbody = document.querySelector('#table-colonnine tbody');
+            tbody.innerHTML = '';
+            colonnine.forEach(c => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${c.id}</td>
+                        <td>${c.indirizzo}</td>
+                        <td>${c.nil}</td>
+                        <td>${c.potenza_kw} kW</td>
+                        <td>${c.stato}</td>
+                        <td>
+                            <button onclick="deleteColonnina(${c.id})">Elimina</button>
+                        </td>
+                    </tr>
+                `;
+            });
+        }
+        
+        document.getElementById('form-colonnina').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const data = {
+                indirizzo: document.getElementById('colonnina-indirizzo').value,
+                latitudine: document.getElementById('colonnina-lat').value,
+                longitudine: document.getElementById('colonnina-lng').value,
+                potenza_kw: document.getElementById('colonnina-potenza').value,
+                nil: document.getElementById('colonnina-nil').value,
+                stato: document.getElementById('colonnina-stato').value
+            };
+            const response = await fetch('/api/admin/colonnine', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            if(response.ok) {
+                alert('Colonnina creata!');
+                e.target.reset();
+                loadColonnine();
+            } else {
+                alert('Errore creazione colonnina.');
+            }
+        });
+
+        async function deleteColonnina(id) {
+            if(!confirm(`Sei sicuro di voler eliminare la colonnina ID: ${id}?`)) return;
+            const response = await fetch(`/api/admin/colonnine/${id}`, { method: 'DELETE' });
+            if(response.ok) {
+                alert('Colonnina eliminata');
+                loadColonnine();
+            } else {
+                alert('Errore eliminazione.');
+            }
+        }
+
+        // --- REQ 4: Utenti ---
+        async function loadUtenti() {
+            const response = await fetch('/api/admin/utenti');
+            const utenti = await response.json();
+            const tbody = document.querySelector('#table-utenti tbody');
+            tbody.innerHTML = '';
+            utenti.forEach(u => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${u.id}</td>
+                        <td>${u.nome}</td>
+                        <td>${u.cognome}</td>
+                        <td>${u.email}</td>
+                        <td>${u.cf}</td>
+                    </tr>
+                `;
+            });
+        }
+        
+        document.getElementById('form-utente').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const data = {
+                nome: document.getElementById('utente-nome').value,
+                cognome: document.getElementById('utente-cognome').value,
+                cf: document.getElementById('utente-cf').value,
+                email: document.getElementById('utente-email').value,
+                password: document.getElementById('utente-password').value
+            };
+            const response = await fetch('/api/admin/utenti', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+            if(response.ok) {
+                alert('Utente creato!');
+                e.target.reset();
+                loadUtenti();
+            } else {
+                alert('Errore creazione utente.');
+            }
+        });
+
+        // --- REQ 5: Ricariche ---
+        async function loadRicariche() {
+            const response = await fetch('/api/admin/ricariche');
+            const ricariche = await response.json();
+            const tbody = document.querySelector('#table-ricariche tbody');
+            tbody.innerHTML = '';
+            ricariche.forEach(r => {
+                tbody.innerHTML += `
+                    <tr>
+                        <td>${r.id}</td>
+                        <td>${new Date(r.inizio).toLocaleString()}</td>
+                        <td>${r.fine ? new Date(r.fine).toLocaleString() : 'In corso'}</td>
+                        <td>${r.kwh || 'N/D'}</td>
+                        <td>${r.utente}</td>
+                        <td>${r.colonnina}</td>
+                    </tr>
+                `;
+            });
+        }
+
+        // --- REQ 6: Statistiche ---
+        async function loadStatistiche() {
+            const nil = document.getElementById('stats-nil-input').value;
+            if(!nil) {
+                alert('Inserisci un NIL');
+                return;
+            }
+            
+            const response = await fetch(`/api/admin/statistiche/ricariche_giorno?nil=${nil}`);
+            const data = await response.json();
+
+            if(data.status === 'success') {
+                document.getElementById('stats-title').innerText = `Ricariche giornaliere per: ${data.nil}`;
+                const ctx = document.getElementById('stats-chart').getContext('2d');
+                
+                if (statsChart) {
+                    statsChart.destroy(); // Distruggi il grafico precedente
+                }
+                
+                statsChart = new Chart(ctx, {
+                    type: 'line', // Grafico a linea
+                    data: {
+                        labels: data.labels, // I giorni
+                        datasets: [{
+                            label: 'Numero di Ricariche',
+                            data: data.data, // I conteggi
+                            borderColor: 'rgb(75, 192, 192)',
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+            } else {
+                alert(`Errore: ${data.message}`);
+            }
+        }
+        
+        // Inizializza mostrando la prima sezione
+        showSection('colonnine');
+    </script>
+
+</body>
+</html>

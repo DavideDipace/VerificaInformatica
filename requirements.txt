@@ -1,0 +1,8 @@
+Flask
+SQLAlchemy
+PyMySQL 
+Flask-SQLAlchemy
+Flask-Login
+python-dotenv
+werkzeug
+Flask-Cors

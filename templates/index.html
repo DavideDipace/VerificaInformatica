@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mappa Colonnine Milano</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 0; }
+        #map { height: 100vh; width: 100%; }
+        .header { position: absolute; top: 10px; right: 10px; z-index: 1000; background: white; padding: 10px; border-radius: 5px; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
+        .popup-content { font-size: 14px; }
+        .popup-content h3 { margin: 0 0 5px 0; }
+        .popup-content button { background-color: #28a745; color: white; border: none; padding: 8px; border-radius: 4px; cursor: pointer; margin-top: 10px; }
+        .popup-content button:hover { background-color: #218838; }
+    </style>
+</head>
+<body>
+    
+    <div class="header">
+        Benvenuto, <strong>{{ user_email }}</strong>! 
+        <a href="/logout">Logout</a>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+        // --- 1. Inizializza la Mappa ---
+        // Coordinate di Milano
+        const map = L.map('map').setView([45.4642, 9.1900], 13);
+
+        // Aggiungi il layer della mappa (OpenStreetMap)
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // --- 2. Definisci le Icone Personalizzate (Req. 2) ---
+        const iconaVerde = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+
+        const iconaRossa = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+        
+        // --- 3. Carica le colonnine dal server ---
+        async function caricaColonnine() {
+            try {
+                const response = await fetch('/api/colonnine');
+                if (!response.ok) throw new Error('Errore nel caricamento dati');
+                
+                const colonnine = await response.json();
+                
+                colonnine.forEach(c => {
+                    let icona = (c.stato === 'disponibile') ? iconaVerde : iconaRossa;
+                    
+                    // Costruisci il contenuto del popup
+                    let popupHtml = `
+                        <div class="popup-content">
+                            <h3>ID: ${c.id}</h3>
+                            <p><strong>Indirizzo:</strong> ${c.indirizzo}</p>
+                            <p><strong>Quartiere (NIL):</strong> ${c.nil}</p>
+                            <p><strong>Potenza:</strong> ${c.potenza_kw} kW</p>
+                            <p><strong>Stato:</strong> ${c.stato.toUpperCase()}</p>
+                    `;
+
+                    // Aggiungi il bottone "Prenota" solo se disponibile (Req. 2)
+                    if (c.stato === 'disponibile') {
+                        popupHtml += `<button onclick="prenota(${c.id})">Prenota Ora</button>`;
+                    }
+                    popupHtml += `</div>`;
+
+                    // Aggiungi il marker alla mappa
+                    L.marker([c.lat, c.lng], { icon: icona })
+                        .addTo(map)
+                        .bindPopup(popupHtml);
+                });
+
+            } catch (error) {
+                console.error(error);
+                alert('Impossibile caricare le colonnine.');
+            }
+        }
+
+        // --- 4. Funzione per Prenotare ---
+        async function prenota(idColonnina) {
+            if (!confirm(`Vuoi confermare la prenotazione per la colonnina ID: ${idColonnina}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/prenota', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id_colonnina: idColonnina })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    alert('Prenotazione effettuata! La colonnina è ora riservata per te. Ricarica la pagina.');
+                    window.location.reload(); // Ricarica per aggiornare lo stato
+                } else {
+                    alert(`Errore: ${data.message}`);
+                }
+            } catch (error) {
+                alert('Errore di connessione durante la prenotazione.');
+            }
+        }
+
+        // Avvia il caricamento
+        caricaColonnine();
+    </script>
+</body>
+</html>
